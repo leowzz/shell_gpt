@@ -12,6 +12,10 @@ completion: Callable[..., Any] = lambda *args, **kwargs: Generator[Any, None, No
 
 base_url = cfg.get("API_BASE_URL")
 use_litellm = cfg.get("USE_LITELLM") == "true"
+use_azure = cfg.get("USE_AZURE") == "true"
+azure_openai_api_key = cfg.get("AZURE_OPENAI_API_KEY")
+azure_openai_api_version = cfg.get("AZURE_OPENAI_API_VERSION")
+azure_openai_api_endpoint = cfg.get("AZURE_OPENAI_API_ENDPOINT")
 additional_kwargs = {
     "timeout": int(cfg.get("REQUEST_TIMEOUT")),
     "api_key": cfg.get("OPENAI_API_KEY"),
@@ -24,6 +28,17 @@ if use_litellm:
     completion = litellm.completion
     litellm.suppress_debug_info = True
     additional_kwargs.pop("api_key")
+elif use_azure:
+    from openai import AzureOpenAI
+
+    print(f"Using Azure OpenAI v{azure_openai_api_version}")
+    client = AzureOpenAI(
+        api_key=azure_openai_api_key,
+        api_version=azure_openai_api_version,
+        azure_endpoint=azure_openai_api_endpoint
+    )
+    completion = client.chat.completions.create
+    additional_kwargs = {}
 else:
     from openai import OpenAI
 
@@ -57,10 +72,10 @@ class Handler:
         raise NotImplementedError
 
     def handle_function_call(
-        self,
-        messages: List[dict[str, Any]],
-        name: str,
-        arguments: str,
+            self,
+            messages: List[dict[str, Any]],
+            name: str,
+            arguments: str,
     ) -> Generator[str, None, None]:
         messages.append(
             {
@@ -84,12 +99,12 @@ class Handler:
 
     @cache
     def get_completion(
-        self,
-        model: str,
-        temperature: float,
-        top_p: float,
-        messages: List[Dict[str, Any]],
-        functions: Optional[List[Dict[str, str]]],
+            self,
+            model: str,
+            temperature: float,
+            top_p: float,
+            messages: List[Dict[str, Any]],
+            functions: Optional[List[Dict[str, str]]],
     ) -> Generator[str, None, None]:
         name = arguments = ""
         is_shell_role = self.role.name == DefaultRoles.SHELL.value
@@ -114,6 +129,9 @@ class Handler:
 
         try:
             for chunk in response:
+                if not chunk.choices:
+                    continue
+
                 delta = chunk.choices[0].delta
 
                 # LiteLLM uses dict instead of Pydantic object like OpenAI does.
@@ -143,14 +161,14 @@ class Handler:
             response.close()
 
     def handle(
-        self,
-        prompt: str,
-        model: str,
-        temperature: float,
-        top_p: float,
-        caching: bool,
-        functions: Optional[List[Dict[str, str]]] = None,
-        **kwargs: Any,
+            self,
+            prompt: str,
+            model: str,
+            temperature: float,
+            top_p: float,
+            caching: bool,
+            functions: Optional[List[Dict[str, str]]] = None,
+            **kwargs: Any,
     ) -> str:
         disable_stream = cfg.get("DISABLE_STREAMING") == "true"
         messages = self.make_messages(prompt.strip())
