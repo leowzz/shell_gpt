@@ -31,7 +31,6 @@ if use_litellm:
 elif use_azure:
     from openai import AzureOpenAI
 
-    print(f"Using Azure OpenAI v{azure_openai_api_version}")
     client = AzureOpenAI(
         api_key=azure_openai_api_key,
         api_version=azure_openai_api_version,
